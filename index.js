@@ -1,11 +1,33 @@
+require('dotenv').config(); // Load environment variables
 const express = require('express')
 const app = express()
 const cors = require('cors')
-
-app.use(express.json())
-app.use(cors())
+const Note = require('./models/note')
 
 app.use(express.static('dist'))
+app.use(express.json())
+// app.use(requestLogger)
+app.use(cors())
+
+
+
+// if (!process.env.MONGODB_PASSWORD && process.argv.length<3) {
+//     console.log('give password as argument')
+//     process.exit(1)
+// }
+
+// const password = process.argv[2]
+
+// const url = `mongodb+srv://fullstack:${process.env.MONGODB_PASSWORD || password}@practice.uhwifmw.mongodb.net/?retryWrites=true&w=majority&appName=practice`
+
+
+
+// mongoose.connect(url)
+
+
+
+// Create mongoose model
+// const Note = mongoose.model('Note', noteSchema)
 
 let notes = [
     {
@@ -25,82 +47,116 @@ let notes = [
     }
 ]
 
-
+// Base
 app.get('/', (request, response) => {
     response.send('<h1>Hello World!</h1>')
 })
 
-app.get('/api/notes/:id/', (request, response) => {
-    const id = Number(request.params.id) 
-    const note = notes.find(note => note.id === id)
-    if (note) {
-        response.json(note)
-    } else {
-        response.status(404).end()
-    } 
+// Fetch a single note
+
+// app.get('/api/notes/:id/', (request, response) => {
+//     const id = Number(request.params.id) 
+//     const note = notes.find(note => note.id === id)
+//     if (note) {
+//         response.json(note)
+//     } else {
+//         response.status(404).end()
+//     } 
+// })
+
+// Fetch a single note using Mongoose
+app.get('/api/notes/:id', (request, response, next) => {
+    Note.findById(request.params.id)
+        .then(note => {
+            if (note) {
+                response.json(note)
+            } else {
+                response.status(404).end()
+            }
+        })
+        .catch(error => next(error))
 })
 
+// Fetch all notes
 app.get('/api/notes', (request, response) => {
-    response.json(notes)
+    Note.find({}).then(notes => {
+        response.json(notes)
+    })
 })
 
-app.delete('/api/notes/:id', (request, response) => {
-    const id = Number(request.params.id)
-    notes = notes.filter(note => note.id !== id)
-    response.status(204).end()
+// Delete a note
+app.delete('/api/notes/:id', (request, response, next) => {
+    Note.findByIdAndDelete(request.params.id)
+        .then(result => {
+            response.status(204).end()
+        })
+        .catch(error => next(error))
 })
+// Generate ID dynamically
+// const generateId = () => {
+//     const maxId = notes.length > 0
+//         ? Math.max(...notes.map(n => n.id)) 
+//         : 0
+//     return maxId + 1
+// }
 
-const generateId = () => {
-    const maxId = notes.length > 0
-        ? Math.max(...notes.map(n => n.id)) 
-        : 0
-    return maxId + 1
-}
-
+// Create a note
 app.post('/api/notes', (request, response) => {
     const body = request.body
 
-    if (!body.content) {
+    if (!body.content === undefined ) {
         return response.status(404).json({
             error: 'Content missing'
         })
     }
 
-    const note = {
+    const note = new Note ({
         content: body.content,
         important: Boolean(body.important) || false,
-        id: generateId(),
-    }
+    })
 
-    notes = notes.concat(note)
-    console.log(note)
-    response.json(note)
+    // notes = notes.concat(note)
+    // console.log(note)
+    note.save().then(savedNote => {
+        response.json(savedNote)
+    })   
 })
 
-app.put('/api/notes/:id', (request, response) => {
-    const id = Number(request.params.id)
+// Modify a note
+app.put('/api/notes/:id', (request, response, next) => {
     const body = request.body
 
-    const noteIndex = notes.findIndex(note => note.id === id)
-    if (noteIndex !== -1) {
-        const updatedNote = {
-            id: id,
-            content: body.content,
-            important: Boolean(body.important) || false
-        }
-        notes[noteIndex] = updatedNote
-        response.json(updatedNote)
-    } else {
-        response.status(404).json({ error: 'Note not found' })
+    const note = {
+        content: body.content,
+        important: body.important
     }
+
+    // the { new: true } causes the updatedNote event handler to be called with the modified note
+    Note.findByIdAndUpdate(request.params.id, note, { new: true})
+        .then(updatedNote => {
+            response.json(updatedNote)
+        })
+        .catch(error => next(error))
 })
 
 const unknownEndpoint = (request, response) => {
     response.status(404).send({error: 'unknown endpoint'})
 }
 
+// Handler of requests wit unknown endpoints
 app.use(unknownEndpoint)
 
+// Centralized error-handling middleware
+const errorHandler = (error, request, response, next) => {
+    console.log(error.message)
+
+    if (error.name === 'CastError') {
+        return response.status(400).send({ error: `malformatted id` })
+    }
+    next(error)
+}
+
+app.use(errorHandler)
 
 const PORT = process.env.PORT || 3001
 app.listen(PORT)
