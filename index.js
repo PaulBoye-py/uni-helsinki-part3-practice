@@ -21,7 +21,6 @@ app.use(cors())
 // const url = `mongodb+srv://fullstack:${process.env.MONGODB_PASSWORD || password}@practice.uhwifmw.mongodb.net/?retryWrites=true&w=majority&appName=practice`
 
 
-
 // mongoose.connect(url)
 
 
@@ -101,7 +100,7 @@ app.delete('/api/notes/:id', (request, response, next) => {
 // }
 
 // Create a note
-app.post('/api/notes', (request, response) => {
+app.post('/api/notes', (request, response, next) => {
     const body = request.body
 
     if (!body.content === undefined ) {
@@ -117,22 +116,19 @@ app.post('/api/notes', (request, response) => {
 
     // notes = notes.concat(note)
     // console.log(note)
-    note.save().then(savedNote => {
+    note.save()
+        .then(savedNote => {
         response.json(savedNote)
-    })   
+        })
+        .catch(error => next(error))   
 })
 
 // Modify a note
 app.put('/api/notes/:id', (request, response, next) => {
-    const body = request.body
-
-    const note = {
-        content: body.content,
-        important: body.important
-    }
+    const { content, important } = request.body
 
     // the { new: true } causes the updatedNote event handler to be called with the modified note
-    Note.findByIdAndUpdate(request.params.id, note, { new: true})
+    Note.findByIdAndUpdate(request.params.id, { content, important }, { new: true, runValidators: true, context: 'query' })
         .then(updatedNote => {
             response.json(updatedNote)
         })
@@ -143,7 +139,7 @@ const unknownEndpoint = (request, response) => {
     response.status(404).send({error: 'unknown endpoint'})
 }
 
-// Handler of requests wit unknown endpoints
+// Handler of requests with unknown endpoints
 app.use(unknownEndpoint)
 
 // Centralized error-handling middleware
@@ -152,6 +148,8 @@ const errorHandler = (error, request, response, next) => {
 
     if (error.name === 'CastError') {
         return response.status(400).send({ error: `malformatted id` })
+    } else if (error.name === `ValidationError`) {
+        return response.status(400).json({ error: error.message})
     }
     next(error)
 }
